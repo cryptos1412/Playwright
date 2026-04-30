@@ -45,6 +45,6 @@ jobs:
       if: always()
       run: |
         STATUS="${{ job.status }}"
-        curl -X POST "https://afifadum.app.n8n.cloud/webhook-test/a31cb2e2-7ca9-47dc-8207-bd085f0f7093/webhook" \
+        curl -X POST "https://afifadum.app.n8n.cloud/webhook/a31cb2e2-7ca9-47dc-8207-bd085f0f7093/webhook" \
           -H "Content-Type: application/json" \
           -d "{\"status\": \"$STATUS\", \"time\": \"$(date)\"}"
