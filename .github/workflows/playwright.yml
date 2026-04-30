@@ -32,7 +32,10 @@ jobs:
       run: npx playwright install --with-deps
     
     - name: Run Playwright tests
-      run: npx playwright test
+      run: |
+          npx playwright test 2>&1 | tee playwright-output.txt
+          echo "result=$(tail -1 playwright-output.txt)" >> $GITHUB_OUTPUT
+      continue-on-error: true
       
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -45,6 +48,8 @@ jobs:
       if: always()
       run: |
         STATUS="${{ job.status }}"
-        curl -X POST "https://afifadum.app.n8n.cloud/webhook/a31cb2e2-7ca9-47dc-8207-bd085f0f7093/webhook" \
-          -H "Content-Type: application/json" \
-          -d "{\"status\": \"$STATUS\", \"time\": \"$(date)\"}"
+        RESULT="${{ steps.playwright.outputs.result }}"
+        TIME="$(date)"
+        curl -X POST "https://afifadum.app.n8n.cloud/webhook/notify-telegram" \
+        -H "Content-Type: application/json" \
+        -d "{\"status\": \"$STATUS\", \"result\": \"$RESULT\", \"time\": \"$TIME\"}"
