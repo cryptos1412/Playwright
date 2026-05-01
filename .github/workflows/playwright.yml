@@ -55,7 +55,7 @@ jobs:
         STATUS="${{ job.status }}"
         RESULT="${{ steps.playwright.outputs.result }}"
         TIME="$(date)"
-        RUN_URL = "https://github.com/cryptos1412/Playwright/actions/runs/${{ github.run_id }}"
+        RUN_URL="https://github.com/cryptos1412/Playwright/actions/runs/${{ github.run_id }}"
         curl -X POST "https://afifadum.app.n8n.cloud/webhook/notify-telegram" \
         -H "Content-Type: application/json" \
         -d "{\"status\": \"$STATUS\", \"result\": \"$RESULT\", \"time\": \"$TIME\", \"report_url\": \"$RUN_URL\"}"
