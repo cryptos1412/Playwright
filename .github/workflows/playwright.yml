@@ -59,3 +59,26 @@ jobs:
         curl -X POST "https://afifadum.app.n8n.cloud/webhook/notify-telegram" \
         -H "Content-Type: application/json" \
         -d "{\"status\": \"$STATUS\", \"result\": \"$RESULT\", \"time\": \"$TIME\", \"report_url\": \"$RUN_URL\"}"
+    - name: Convert report to PDF and send to Telegram
+      if: always()
+      run: |
+        STATUS="${{ job.status }}"
+        RESULT="${{ steps.playwright.outputs.result }}"
+    
+        node -e "
+        const { chromium } = require('playwright');
+        (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+        await page.goto('file://' + process.cwd() + '/playwright-report/index.html');
+        await page.waitForLoadState('networkidle');
+        await page.pdf({ path: 'report.pdf', format: 'A4', printBackground: true });
+        await browser.close();
+        console.log('PDF created');
+        })();
+        "
+    
+        curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+          -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -F "document=@report.pdf" \
+          -F "caption=Playwright selesai! Status: $STATUS | Hasil: $RESULT"
