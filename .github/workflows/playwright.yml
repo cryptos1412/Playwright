@@ -32,9 +32,10 @@ jobs:
       run: npx playwright install --with-deps
     
     - name: Run Playwright tests
+      id: playwright
       run: |
-          npx playwright test 2>&1 | tee playwright-output.txt
-          echo "result=$(tail -1 playwright-output.txt)" >> $GITHUB_OUTPUT
+        npx playwright test ${{ github.event.inputs.test_path }} --reporter=html 2>&1 | tee playwright-output.txt
+        echo "result=$(tail -1 playwright-output.txt)" >> $GITHUB_OUTPUT
       continue-on-error: true
       
     - name: Upload test results
