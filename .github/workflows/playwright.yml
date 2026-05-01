@@ -11,7 +11,11 @@ on:
       command:
         description: 'Perintah dari Telegram'
         required: false
-        default: 'run-all'
+        default: 'all'
+      test_path:
+        description: 'Path file test'
+        required: false
+        default: ''
 
 jobs:
   test:
