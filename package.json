@@ -3,11 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {
-    "test": "playwright test",
-    "test:rahulshetty": "playwright test rahulshetty",
-    "ai:generate-tests": "node scripts/ai-generate-tests.mjs"
-  },
+  "scripts": {},
   "keywords": [],
   "author": "",
   "license": "ISC",
