@@ -16,7 +16,7 @@ async function login(page, username, password) {
     await page.locator('#signInBtn').click();
 }
 
-test.describe('Login page', () => {
+test.describe('Rahul Shetty - Login', () => {
     test.beforeEach(async ({ page }) => {
         await openLoginPage(page);
     });

@@ -1,0 +1,162 @@
+name: AI Playwright Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: 'Prompt dari Telegram/n8n untuk membuat test case dan script Playwright'
+        required: true
+      output_dir:
+        description: 'Folder output test yang dibuat AI'
+        required: false
+        default: 'tests/ai-generated'
+      test_path:
+        description: 'Path test yang dijalankan setelah generate. Kosong = pakai output_dir'
+        required: false
+        default: ''
+      n8n_callback_url:
+        description: 'Webhook n8n untuk menerima status/report URL'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  generate-test-run-and-report:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Playwright tests with OpenAI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.2' }}
+          AI_TEST_REQUEST: ${{ github.event.inputs.request }}
+          AI_TEST_OUTPUT_DIR: ${{ github.event.inputs.output_dir }}
+        run: node scripts/ai-generate-tests.mjs
+
+      - name: Commit and push generated tests
+        id: commit
+        run: |
+          git config user.name "ai-playwright-agent"
+          git config user.email "actions@github.com"
+          git add tests ai-output/generation-result.json
+          if git diff --cached --quiet; then
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "test: generate Playwright tests from Telegram request"
+            git push
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Resolve test command
+        id: command
+        run: |
+          TEST_PATH="${{ github.event.inputs.test_path }}"
+          if [ -z "$TEST_PATH" ]; then
+            TEST_PATH="${{ github.event.inputs.output_dir }}"
+          fi
+          echo "test_path=$TEST_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Run Playwright tests
+        id: playwright
+        continue-on-error: true
+        run: |
+          npx playwright test "${{ steps.command.outputs.test_path }}" --reporter=html,line 2>&1 | tee playwright-output.txt
+          RESULT="$(tail -n 20 playwright-output.txt | tr '\n' ' ')"
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+
+      - name: Convert HTML report to PDF
+        if: always()
+        run: |
+          node -e "
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+            await page.goto('file://' + process.cwd() + '/playwright-report/index.html');
+            await page.waitForLoadState('networkidle');
+            await page.pdf({ path: 'playwright-report.pdf', format: 'A4', printBackground: true });
+            await browser.close();
+          })();
+          "
+
+      - name: Collect screenshots
+        if: always()
+        run: |
+          mkdir -p ai-output/screenshots
+          find test-results -name "*.png" -type f -exec cp {} ai-output/screenshots/ \; || true
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-html-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload PDF report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-pdf-report
+          path: playwright-report.pdf
+          retention-days: 7
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-before-feature-screenshots
+          path: ai-output/screenshots/
+          retention-days: 7
+
+      - name: Notify n8n callback
+        if: always() && github.event.inputs.n8n_callback_url != ''
+        run: |
+          jq -n \
+            --arg status "${{ steps.playwright.outcome }}" \
+            --arg committed "${{ steps.commit.outputs.committed }}" \
+            --arg result "${{ steps.playwright.outputs.result }}" \
+            --arg run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --arg request "${{ github.event.inputs.request }}" \
+            '{status:$status, committed:$committed, result:$result, run_url:$run_url, request:$request}' \
+            > ai-output/n8n-callback.json
+
+          curl -X POST "${{ github.event.inputs.n8n_callback_url }}" \
+            -H "Content-Type: application/json" \
+            --data @ai-output/n8n-callback.json
+
+      - name: Send PDF to Telegram
+        if: always() && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${TELEGRAM_CHAT_ID}" \
+            -F "document=@playwright-report.pdf" \
+            -F "caption=AI Playwright selesai. Status: ${{ steps.playwright.outcome }}. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Fail workflow when tests fail
+        if: steps.playwright.outcome != 'success'
+        run: exit 1
