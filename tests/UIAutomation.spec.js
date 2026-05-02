@@ -1,10 +1,6 @@
-const {test, expect} = require('@playwright/test');
+const { test } = require('./support/globalScreenshot');
 
-test('First test', async ({browser})=>
+test('First test', async ({ page })=>
 {
-    //every function using async, it will follow with await
-    const context = await browser.newContext();
-    const page = await context.newPage();
     await page.goto("https://automationexercise.com/")
-    
 })

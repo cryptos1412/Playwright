@@ -34,11 +34,24 @@ jobs:
     
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
+
+    - name: Prepare screenshot folder
+      run: |
+        AUTOMATION_NAME="${{ github.event.inputs.test_path }}"
+        if [ -z "$AUTOMATION_NAME" ]; then
+          AUTOMATION_NAME="all"
+        fi
+        AUTOMATION_NAME="$(echo "$AUTOMATION_NAME" | sed 's#^tests/##' | sed 's#[^A-Za-z0-9._-]#-#g' | sed 's#\.spec\.js$##')"
+        RUN_TIME="$(date +'%Y-%m-%d_%H-%M')"
+        SCREENSHOT_DIR="screenshots/${AUTOMATION_NAME}-${RUN_TIME}"
+        mkdir -p "$SCREENSHOT_DIR"
+        echo "SCREENSHOT_DIR=$SCREENSHOT_DIR" >> "$GITHUB_ENV"
+        echo "SCREENSHOT_ZIP=${AUTOMATION_NAME}-${RUN_TIME}-screenshots.zip" >> "$GITHUB_ENV"
     
     - name: Run Playwright tests
       id: playwright
       run: |
-        npx playwright test ${{ github.event.inputs.test_path }} --reporter=html --trace=on 2>&1 | tee playwright-output.txt
+        npx playwright test ${{ github.event.inputs.test_path }} --reporter=html 2>&1 | tee playwright-output.txt
         {
           echo "result<<EOF"
           tail -n 20 playwright-output.txt
@@ -75,18 +88,10 @@ jobs:
         EOF
         fi
 
-    - name: Create screenshots and trace ZIP
+    - name: Create screenshot ZIP
       if: always()
       run: |
-        mkdir -p artifacts
-        cp playwright-output.txt artifacts/playwright-output.txt
-        cp -r playwright-report artifacts/playwright-report
-        
-        if [ -d test-results ]; then
-          cp -r test-results artifacts/test-results
-        fi
-
-        zip -r playwright-screenshots-and-traces.zip artifacts
+        zip -r "$SCREENSHOT_ZIP" screenshots
       
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -96,12 +101,12 @@ jobs:
         path: playwright-report/
         retention-days: 7
 
-    - name: Upload screenshots and traces ZIP
+    - name: Upload screenshot ZIP
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: playwright-screenshots-and-traces
-        path: playwright-screenshots-and-traces.zip
+        name: playwright-screenshots
+        path: ${{ env.SCREENSHOT_ZIP }}
         retention-days: 7
 
     - name: Notify Telegram via n8n
@@ -138,7 +143,7 @@ jobs:
           -F "document=@report.pdf" \
           -F "caption=Playwright selesai! Status: $STATUS | Hasil: $RESULT"
 
-    - name: Send screenshots and traces ZIP to Telegram
+    - name: Send screenshot ZIP to Telegram
       if: always()
       run: |
         STATUS="${{ job.status }}"
@@ -146,5 +151,5 @@ jobs:
 
         curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
           -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -F "document=@playwright-screenshots-and-traces.zip" \
-          -F "caption=ZIP screenshot, trace setiap step, HTML report, dan log Playwright. Status: $STATUS | Hasil: $RESULT"
+          -F "document=@${SCREENSHOT_ZIP}" \
+          -F "caption=ZIP screenshot otomatis dari folder ${SCREENSHOT_DIR}. Status: $STATUS | Hasil: $RESULT"

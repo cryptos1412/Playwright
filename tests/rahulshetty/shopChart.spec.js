@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../support/globalScreenshot');
 
 const loginUrl = 'https://rahulshettyacademy.com/loginpagePractise/';
 const validUsername = 'rahulshettyacademy';
