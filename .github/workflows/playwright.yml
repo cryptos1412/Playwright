@@ -38,9 +38,29 @@ jobs:
     - name: Run Playwright tests
       id: playwright
       run: |
-        npx playwright test ${{ github.event.inputs.test_path }} --reporter=html 2>&1 | tee playwright-output.txt
-        echo "result=$(tail -1 playwright-output.txt)" >> $GITHUB_OUTPUT
+        npx playwright test ${{ github.event.inputs.test_path }} --reporter=html --trace on --screenshot on 2>&1 | tee playwright-output.txt
+        {
+          echo "result<<EOF"
+          tail -n 20 playwright-output.txt
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
       continue-on-error: true
+
+    - name: Create screenshots and trace ZIP
+      if: always()
+      run: |
+        mkdir -p artifacts
+        cp playwright-output.txt artifacts/playwright-output.txt
+
+        if [ -d test-results ]; then
+          cp -r test-results artifacts/test-results
+        fi
+
+        if [ -d playwright-report ]; then
+          cp -r playwright-report artifacts/playwright-report
+        fi
+
+        zip -r playwright-screenshots-and-traces.zip artifacts
       
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -49,6 +69,15 @@ jobs:
         name: playwright-report
         path: playwright-report/
         retention-days: 7
+
+    - name: Upload screenshots and traces ZIP
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-screenshots-and-traces
+        path: playwright-screenshots-and-traces.zip
+        retention-days: 7
+
     - name: Notify Telegram via n8n
       if: always()
       run: |
@@ -82,3 +111,14 @@ jobs:
           -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
           -F "document=@report.pdf" \
           -F "caption=Playwright selesai! Status: $STATUS | Hasil: $RESULT"
+
+    - name: Send screenshots and traces ZIP to Telegram
+      if: always()
+      run: |
+        STATUS="${{ job.status }}"
+        RESULT="${{ steps.playwright.outputs.result }}"
+
+        curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+          -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -F "document=@playwright-screenshots-and-traces.zip" \
+          -F "caption=ZIP screenshot, trace setiap step, HTML report, dan log Playwright. Status: $STATUS | Hasil: $RESULT"
