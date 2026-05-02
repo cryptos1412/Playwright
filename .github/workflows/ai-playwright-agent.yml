@@ -82,12 +82,28 @@ jobs:
         continue-on-error: true
         run: |
           npx playwright test "${{ steps.command.outputs.test_path }}" --reporter=html,line 2>&1 | tee playwright-output.txt
-          RESULT="$(tail -n 20 playwright-output.txt | tr '\n' ' ')"
-          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          {
+            echo "result<<EOF"
+            tail -n 20 playwright-output.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Convert HTML report to PDF
         if: always()
         run: |
+          if [ ! -f playwright-report/index.html ]; then
+            mkdir -p playwright-report
+            cat > playwright-report/index.html <<'EOF'
+          <!doctype html>
+          <html>
+            <body>
+              <h1>Playwright report was not generated</h1>
+              <p>Check the GitHub Actions log for the failing step before test execution.</p>
+            </body>
+          </html>
+          EOF
+          fi
+
           node -e "
           const { chromium } = require('playwright');
           (async () => {
@@ -128,10 +144,12 @@ jobs:
         with:
           name: playwright-before-feature-screenshots
           path: ai-output/screenshots/
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Notify n8n callback
         if: always() && github.event.inputs.n8n_callback_url != ''
+        continue-on-error: true
         run: |
           jq -n \
             --arg status "${{ steps.playwright.outcome }}" \
@@ -147,11 +165,17 @@ jobs:
             --data @ai-output/n8n-callback.json
 
       - name: Send PDF to Telegram
-        if: always() && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+        if: always()
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Skipping Telegram PDF upload because TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty."
+            exit 0
+          fi
+
           curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
             -F "chat_id=${TELEGRAM_CHAT_ID}" \
             -F "document=@playwright-report.pdf" \
