@@ -38,7 +38,7 @@ jobs:
     - name: Run Playwright tests
       id: playwright
       run: |
-        npx playwright test ${{ github.event.inputs.test_path }} --reporter=html --trace on --screenshot on 2>&1 | tee playwright-output.txt
+        npx playwright test ${{ github.event.inputs.test_path }} --reporter=html --trace=on 2>&1 | tee playwright-output.txt
         {
           echo "result<<EOF"
           tail -n 20 playwright-output.txt
