@@ -3,14 +3,18 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "test": "playwright test",
+    "serve": "http-server app -p 5173 -s -c-1"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
-    "@types/node": "^25.5.0"
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^25.5.0",
+    "http-server": "^14.1.1"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
